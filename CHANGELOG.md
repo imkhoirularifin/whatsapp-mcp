@@ -3,6 +3,13 @@
 **Note:** All dates are in Mexico City CST (UTC-6).
 
 <!-- markdownlint-disable MD013 MD024 MD022 MD032 -->
+## [2026-10-13] - Exact sender names
+
+- docs: archive the completed `fix-sender-name-lookup` OpenSpec change and sync its delta into the new main spec `openspec/specs/sender-names/spec.md`, leaving no active changes
+- fix: name each message's sender only by the chat stored under exactly their identity (`<number>@s.whatsapp.net`, or a person JID as given), never by a substring match on chat JIDs, so a person who created a group is no longer shown with the group's name, even in their direct chat, and a number contained in a longer one no longer borrows that contact's name; group and broadcast JIDs are never used as sender names, and chats named by their number fall back to the number
+- test: add regression tests for sender names, with fictitious data, covering group creators, numbers contained in other numbers, chats named by their number and the user's own messages
+- docs: add and complete the `fix-sender-name-lookup` OpenSpec change (proposal, new `sender-names` delta spec and tasks), recording the live check on a direct chat and a group
+
 ## [2026-10-07] - Project documentation, credits and agent guide
 
 - docs: add `TODO.md`, a roadmap triaged from the 93 open upstream issues: 24 items grouped as bugs, features, performance and tooling, each linked to its issue, plus the issues already handled in this fork and those not taken

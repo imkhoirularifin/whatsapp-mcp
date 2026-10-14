@@ -161,43 +161,30 @@ class MessageContext:
     before: List[Message]
     after: List[Message]
 
+_PERSON_SERVERS = ("s.whatsapp.net", "lid")
+
+
 def get_sender_name(sender_jid: str) -> str:
+    """Name a message's sender by the chat stored under exactly their identity, or show the number.
+
+    Senders are stored as bare numbers, so a number is looked up as `<number>@s.whatsapp.net`.
+    Only person JIDs are matched: a group's JID starts with its creator's number, and a partial
+    match would attribute that person's messages to the group (or to a longer number).
+    """
+    user, _, server = sender_jid.partition("@")
+    if server and server not in _PERSON_SERVERS:
+        return sender_jid
+    jid = sender_jid if server else f"{user}@s.whatsapp.net"
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
-        # First try matching by exact JID
-        cursor.execute("""
-            SELECT name
-            FROM chats
-            WHERE jid = ?
-            LIMIT 1
-        """, (sender_jid,))
-        
+        cursor.execute("SELECT name FROM chats WHERE jid = ? LIMIT 1", (jid,))
         result = cursor.fetchone()
-        
-        # If no result, try looking for the number within JIDs
-        if not result:
-            # Extract the phone number part if it's a JID
-            if '@' in sender_jid:
-                phone_part = sender_jid.split('@')[0]
-            else:
-                phone_part = sender_jid
-                
-            cursor.execute("""
-                SELECT name
-                FROM chats
-                WHERE jid LIKE ?
-                LIMIT 1
-            """, (f"%{phone_part}%",))
-            
-            result = cursor.fetchone()
-        
-        if result and result[0]:
+        # Chats without a known name store the bare number as their name
+        if result and result[0] and result[0] != user:
             return result[0]
-        else:
-            return sender_jid
-        
+        return sender_jid
+
     except sqlite3.Error as e:
         print(f"Database error while getting sender name: {e}")
         return sender_jid
