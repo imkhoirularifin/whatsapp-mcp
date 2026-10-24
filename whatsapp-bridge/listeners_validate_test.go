@@ -6,7 +6,11 @@ import (
 )
 
 func validCtx() validationContext {
-	return validationContext{policy: urlPolicy{self: testSelf}, lidToPN: testLIDLookup, creating: true}
+	return validationContext{
+		policy:   urlPolicy{self: testSelf, allowedHosts: testAllowLocal},
+		lidToPN:  testLIDLookup,
+		creating: true,
+	}
 }
 
 func validListener() Listener {

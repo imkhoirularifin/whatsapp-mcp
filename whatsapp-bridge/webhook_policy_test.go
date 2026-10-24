@@ -11,9 +11,14 @@ import (
 
 var testSelf = netip.MustParseAddrPort("127.0.0.1:8080")
 
+// testAllowLocal is the allowlist harnesses use when exercising local webhook receivers.
+var testAllowLocal = parseAllowedHosts("127.0.0.1, localhost")
+
 func TestValidateWebhookURL(t *testing.T) {
-	policy := urlPolicy{self: testSelf}
+	denyAll := urlPolicy{self: testSelf}
+	local := urlPolicy{self: testSelf, allowedHosts: testAllowLocal}
 	allow := urlPolicy{self: testSelf, allowedHosts: parseAllowedHosts("n8n.example.org, 127.0.0.1, *.hooks.example.com")}
+	private := urlPolicy{self: testSelf, allowedHosts: parseAllowedHosts("192.168.100.20, fd00::1")}
 
 	cases := []struct {
 		name    string
@@ -21,25 +26,29 @@ func TestValidateWebhookURL(t *testing.T) {
 		policy  urlPolicy
 		wantErr string
 	}{
-		{"file scheme", "file:///etc/passwd", policy, "http or https"},
-		{"gopher scheme", "gopher://example.com", policy, "http or https"},
-		{"plain http public", "http://hooks.example.com/wa", policy, "https for public hosts"},
-		{"https public refused by default", "https://hooks.example.com/wa", policy, "WEBHOOK_ALLOWED_HOSTS"},
-		{"host name refused by default", "https://n8n.home.example/hook", policy, "WEBHOOK_ALLOWED_HOSTS"},
-		{"public ip refused by default", "https://93.184.216.34/hook", policy, "WEBHOOK_ALLOWED_HOSTS"},
+		{"file scheme", "file:///etc/passwd", denyAll, "http or https"},
+		{"gopher scheme", "gopher://example.com", denyAll, "http or https"},
+		{"plain http public", "http://hooks.example.com/wa", urlPolicy{self: testSelf, allowedHosts: []string{"hooks.example.com"}}, "https for public hosts"},
+		{"https public refused by default", "https://hooks.example.com/wa", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
+		{"host name refused by default", "https://n8n.home.example/hook", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
+		{"public ip refused by default", "https://93.184.216.34/hook", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
 		{"https public listed", "https://hooks.example.com/wa", urlPolicy{self: testSelf, allowedHosts: []string{"hooks.example.com"}}, ""},
-		{"local automation", "http://127.0.0.1:5678/webhook/wa", policy, ""},
-		{"localhost", "http://localhost:5678/hook", policy, ""},
-		{"private network", "http://192.168.100.20/hook", policy, ""},
-		{"ipv6 unique local", "http://[fd00::1]:8000/hook", policy, ""},
-		{"bridge itself", "http://127.0.0.1:8080/api/send", policy, "bridge's own API"},
-		{"bridge via localhost", "http://localhost:8080/api/send", policy, "bridge's own API"},
-		{"bridge via other loopback", "http://127.0.0.2:8080/api/send", policy, "bridge's own API"},
+		{"loopback refused when unset", "http://127.0.0.1:5678/webhook/wa", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
+		{"localhost refused when unset", "http://localhost:5678/hook", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
+		{"private network refused when unset", "http://192.168.100.20/hook", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
+		{"ipv6 unique local refused when unset", "http://[fd00::1]:8000/hook", denyAll, "WEBHOOK_ALLOWED_HOSTS"},
+		{"local automation when listed", "http://127.0.0.1:5678/webhook/wa", local, ""},
+		{"localhost when listed", "http://localhost:5678/hook", local, ""},
+		{"private network when listed", "http://192.168.100.20/hook", private, ""},
+		{"ipv6 unique local when listed", "http://[fd00::1]:8000/hook", private, ""},
+		{"bridge itself", "http://127.0.0.1:8080/api/send", local, "bridge's own API"},
+		{"bridge via localhost", "http://localhost:8080/api/send", local, "bridge's own API"},
+		{"bridge via other loopback", "http://127.0.0.2:8080/api/send", urlPolicy{self: testSelf, allowedHosts: []string{"127.0.0.2"}}, "bridge's own API"},
 		{"credentials", "https://user:pass@hooks.example.com/wa", allow, "user name or password"},
-		{"no host", "https:///wa", policy, "must have a host"},
-		{"metadata literal", "http://169.254.169.254/latest", policy, "link-local"},
+		{"no host", "https:///wa", denyAll, "must have a host"},
+		{"metadata literal", "http://169.254.169.254/latest", urlPolicy{self: testSelf, allowedHosts: []string{"169.254.169.254"}}, "link-local"},
 		{"too long", "https://hooks.example.com/" + strings.Repeat("a", maxWebhookURLLength), allow, "longer than"},
-		{"empty", "", policy, "required"},
+		{"empty", "", denyAll, "required"},
 		{"allowlist hit", "https://n8n.example.org/hook", allow, ""},
 		{"allowlist suffix", "https://a.hooks.example.com/hook", allow, ""},
 		{"allowlist ip", "http://127.0.0.1:5678/hook", allow, ""},
@@ -102,7 +111,7 @@ func TestForbiddenIP(t *testing.T) {
 }
 
 func TestDialControlRefusesMetadataBeforeConnecting(t *testing.T) {
-	client := newWebhookHTTPClient(2*time.Second, urlPolicy{self: testSelf})
+	client := newWebhookHTTPClient(2*time.Second, urlPolicy{self: testSelf, allowedHosts: []string{"169.254.169.254"}})
 	start := time.Now()
 	_, err := client.Post("http://169.254.169.254/latest/meta-data", "application/json", nil)
 	if err == nil || !strings.Contains(err.Error(), "refused by the webhook URL policy") {
@@ -112,4 +121,18 @@ func TestDialControlRefusesMetadataBeforeConnecting(t *testing.T) {
 		t.Errorf("refusal took %v; it should happen before any network wait", time.Since(start))
 	}
 	_ = http.StatusOK
+}
+
+func TestDialControlRefusesEverythingWhenAllowlistUnset(t *testing.T) {
+	client := newWebhookHTTPClient(2*time.Second, urlPolicy{self: testSelf})
+	for _, target := range []string{
+		"http://127.0.0.1:5678/hook",
+		"http://192.168.1.10/hook",
+		"https://93.184.216.34/hook",
+	} {
+		_, err := client.Post(target, "application/json", nil)
+		if err == nil || !strings.Contains(err.Error(), "WEBHOOK_ALLOWED_HOSTS is unset") {
+			t.Errorf("%s: err = %v, want unset-allowlist refusal", target, err)
+		}
+	}
 }

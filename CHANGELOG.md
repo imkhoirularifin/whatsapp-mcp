@@ -6,10 +6,12 @@
 ## [2026-10-24] - Coolify deploy hardening
 
 - security: default `WHATSAPP_READ_ONLY` to **true** in the bridge and MCP server (opt out with `false` / `0` / `no` / `off`)
+- security: BREAKING: unset `WEBHOOK_ALLOWED_HOSTS` now **denies all** webhook targets (including loopback / private Docker IPs); list hosts explicitly before enabling listeners
 - chore: bump `go.mau.fi/whatsmeow` to `v0.0.0-20261017175727-b2b1e71d45e2` (verified combination for the upstream 405 / media-403 tracking issue)
-- test: add path-traversal / media-root coverage for `checkMediaPath`, and tests for the new read-only default
-- feat: add Coolify-oriented Docker packaging (`Dockerfile`, `entrypoint.sh`, `Dockerfile.gateway`, `Caddyfile`, `docker-compose.yaml`) built from this repo's source (no remote `git clone` at build time), non-root `app` (uid 10001), store volume at `/app/whatsapp-bridge/store`, bridge on `127.0.0.1:8080`, mcp-proxy on `8096`, Bearer auth at the Caddy gateway with unauthenticated `/healthz`
-- docs: document Coolify deploy, QR via `docker logs`, env vars, remote MCP client config, and risks (prompt injection, ban risk, backing up `whatsapp.db`)
+- test: add path-traversal / media-root coverage for `checkMediaPath`, read-only default tests, and webhook deny-all / dial-refusal coverage
+- feat: add Coolify-oriented Docker packaging (`Dockerfile`, `entrypoint.sh`, `Dockerfile.gateway`, `gateway-entrypoint.sh`, `Caddyfile`, `docker-compose.yaml`) built from this repo's source (no remote `git clone` at build time), non-root `app` (uid 10001), store volume at `/app/whatsapp-bridge/store`, bridge on `127.0.0.1:8080`, mcp-proxy on `8096`, Bearer auth at the Caddy gateway (token ≥48 chars of `[A-Za-z0-9._~-]`), loopback-only `/healthz`, `RESTART_DELAY` throttle, read-only rootfs + cap_drop
+- fix: `uv sync --python /usr/local/bin/python3` so the 3.12 image builds despite `.python-version` saying 3.11
+- docs: document Coolify deploy, QR via `docker logs`, env vars, remote MCP client config, gateway token rules, webhook deny-all, and risks (prompt injection, ban risk, backing up `whatsapp.db`)
 
 ## [2026-10-13] - Exact sender names
 

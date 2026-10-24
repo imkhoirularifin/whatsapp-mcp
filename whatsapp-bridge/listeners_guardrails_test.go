@@ -84,11 +84,20 @@ func TestDialRefusesPublicAddressWithoutAllowlist(t *testing.T) {
 	client := newWebhookHTTPClient(2*time.Second, urlPolicy{self: testSelf})
 	start := time.Now()
 	_, err := client.Post("https://93.184.216.34/hook", "application/json", nil)
-	if err == nil || !strings.Contains(err.Error(), "refused by the webhook URL policy") {
-		t.Fatalf("err = %v, want a policy refusal", err)
+	if err == nil || !strings.Contains(err.Error(), "WEBHOOK_ALLOWED_HOSTS is unset") {
+		t.Fatalf("err = %v, want unset-allowlist refusal", err)
 	}
 	if time.Since(start) > time.Second {
 		t.Errorf("refusal took %v; it should happen before any network wait", time.Since(start))
+	}
+}
+
+func TestCreateListenerRefusesLoopbackWhenAllowlistUnset(t *testing.T) {
+	h := newAPIHarness(t, "127.0.0.1", "")
+	h.api.policy = urlPolicy{self: testSelf} // empty allowlist = deny-all
+	code, body, _ := h.do("POST", "/api/listeners", createBody)
+	if code != http.StatusBadRequest || !strings.Contains(strings.ToLower(jsonString(body)), "webhook_allowed_hosts") {
+		t.Fatalf("create loopback without allowlist: %d %v", code, body)
 	}
 }
 

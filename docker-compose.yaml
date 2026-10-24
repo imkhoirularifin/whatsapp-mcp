@@ -4,17 +4,28 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    stop_grace_period: 20s
     environment:
-      # Safety switches — read-only is also the image/binary default
+      # Safety switches. Read-only is also the image/binary default.
       - WHATSAPP_READ_ONLY=${WHATSAPP_READ_ONLY:-true}
       - WHATSAPP_SEND_RATE=${WHATSAPP_SEND_RATE:-5/30}
       - BIND_ADDR=127.0.0.1
-      # - WHATSAPP_SEND_ALLOWED=628123456789           # optional recipient allow-list
-      # - WHATSAPP_MEDIA_ROOTS=/app/whatsapp-bridge/store/media
+      - GOMEMLIMIT=450MiB
+      # - WHATSAPP_SEND_ALLOWED=628123456789
+      # - WEBHOOK_ALLOWED_HOSTS=hooks.example.com   # required before turning READ_ONLY off if you use listeners
+      # - RESTART_DELAY=30
     volumes:
-      - wa-store:/app/whatsapp-bridge/store            # whatsapp.db (session!) + messages.db + media
+      - wa-store:/app/whatsapp-bridge/store
     expose:
-      - "8096"                                         # internal only; do NOT publish 8080
+      - "8096"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     healthcheck:
       test: ["CMD", "python", "-c", "import socket;socket.create_connection(('127.0.0.1',8096),3)"]
       interval: 30s
@@ -25,6 +36,7 @@ services:
       resources:
         limits:
           memory: 768M
+          cpus: "1.0"
 
   gateway:
     build:
@@ -34,13 +46,29 @@ services:
     depends_on:
       - whatsapp
     environment:
-      - SERVICE_FQDN_GATEWAY_80                        # Coolify assigns the public domain → port 80
-      - MCP_AUTH_TOKEN=${SERVICE_PASSWORD_64_MCPTOKEN} # Coolify generates a 64-char token
+      - SERVICE_FQDN_GATEWAY_80
+      - MCP_AUTH_TOKEN=${SERVICE_PASSWORD_64_MCPTOKEN}
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+      - /data:size=1m,mode=1777
+      - /config:size=1m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.5"
 
 volumes:
   wa-store:

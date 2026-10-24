@@ -33,7 +33,10 @@ RUN apt-get update \
 COPY whatsapp-mcp-server /app/whatsapp-mcp-server
 COPY --from=bridge /out/whatsapp-bridge /app/whatsapp-bridge/whatsapp-bridge
 
-RUN cd /app/whatsapp-mcp-server && uv sync --frozen --no-dev \
+# .python-version pins 3.11 for local uv, but this image is 3.12 and
+# UV_PYTHON_DOWNLOADS=never — point uv at the image interpreter explicitly.
+# requires-python is ">=3.11", so 3.12 is compatible.
+RUN cd /app/whatsapp-mcp-server && uv sync --frozen --no-dev --python /usr/local/bin/python3 \
  && useradd -r -u 10001 -d /app -s /usr/sbin/nologin app \
  && mkdir -p /app/whatsapp-bridge/store \
  && chown -R app:app /app/whatsapp-bridge /app/whatsapp-mcp-server

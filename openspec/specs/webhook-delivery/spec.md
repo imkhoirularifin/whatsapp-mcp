@@ -94,7 +94,7 @@ Matching and queueing SHALL happen without network I/O in the path that handles 
 - **THEN** the message is stored, its delivery is recorded as `dropped`, and a warning is logged
 
 ### Requirement: Webhook URL safety policy
-A `webhook_url` SHALL be accepted only when: its scheme is `http` or `https`; it has a host and no user name or password; it is at most 2,048 characters; it uses `https` unless its host is a loopback or private-network (RFC 1918, RFC 4193) address or the name `localhost`; it does not point at the bridge's own REST API address and port; and its host is allowed: when `WEBHOOK_ALLOWED_HOSTS` (a comma-separated list of host names, `*.domain` suffixes or IP addresses) is not set, only loopback and private-network addresses and the name `localhost` are allowed; when it is set, only the hosts on that list are allowed. A public host SHALL therefore be refused unless it is listed, so that a prompt-injected listener cannot post messages to the internet. Every connection SHALL also check the resolved IP address and refuse link-local addresses (including `169.254.169.254`), unspecified, multicast and broadcast addresses, the bridge's own API address, and public addresses for a host that is not on `WEBHOOK_ALLOWED_HOSTS`, so that a host name that later resolves somewhere else cannot bypass the policy. Existing listeners that no longer satisfy the policy SHALL keep their configuration, and their deliveries SHALL fail with an error naming `WEBHOOK_ALLOWED_HOSTS`.
+A `webhook_url` SHALL be accepted only when: its scheme is `http` or `https`; it has a host and no user name or password; it is at most 2,048 characters; it uses `https` unless its host is a loopback or private-network (RFC 1918, RFC 4193) address or the name `localhost`; it does not point at the bridge's own REST API address and port; and its host is on `WEBHOOK_ALLOWED_HOSTS` (a comma-separated list of host names, `*.domain` suffixes or IP addresses). When `WEBHOOK_ALLOWED_HOSTS` is unset or empty, **every** target SHALL be refused, including loopback and private-network addresses, so a prompt-injected listener cannot reach Docker-network or local services until an operator lists hosts explicitly. Every connection SHALL also check the resolved IP address and refuse link-local addresses (including `169.254.169.254`), unspecified, multicast and broadcast addresses, and the bridge's own API address; when the allowlist is unset, the dial SHALL be refused before connecting. Existing listeners that no longer satisfy the policy SHALL keep their configuration, and their deliveries SHALL fail with an error naming `WEBHOOK_ALLOWED_HOSTS`.
 
 #### Scenario: Non-HTTP scheme rejected
 - **WHEN** a listener is created with `webhook_url: "file:///etc/passwd"` or `"gopher://example.com"`
@@ -112,8 +112,12 @@ A `webhook_url` SHALL be accepted only when: its scheme is `http` or `https`; it
 - **WHEN** `WEBHOOK_ALLOWED_HOSTS=hooks.example.com` and a listener is created with `webhook_url: "https://hooks.example.com/wa"`
 - **THEN** the listener is accepted
 
-#### Scenario: Local automation allowed
+#### Scenario: Loopback refused when unset
 - **WHEN** `WEBHOOK_ALLOWED_HOSTS` is not set and a listener is created with `webhook_url: "http://127.0.0.1:5678/webhook/wa"`
+- **THEN** the bridge answers `400` naming `WEBHOOK_ALLOWED_HOSTS`, and stores nothing
+
+#### Scenario: Local automation allowed when listed
+- **WHEN** `WEBHOOK_ALLOWED_HOSTS=127.0.0.1` and a listener is created with `webhook_url: "http://127.0.0.1:5678/webhook/wa"`
 - **THEN** the listener is accepted
 
 #### Scenario: Bridge cannot call itself

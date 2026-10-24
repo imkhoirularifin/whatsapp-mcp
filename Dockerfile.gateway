@@ -1,2 +1,10 @@
 FROM caddy:2.11.7-alpine
+# Non-root Caddy; XDG_* into /tmp so read_only + tmpfs compose mounts work.
+ENV XDG_CONFIG_HOME=/tmp/caddy-config \
+    XDG_DATA_HOME=/tmp/caddy-data
 COPY Caddyfile /etc/caddy/Caddyfile
+COPY gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
+RUN chmod 755 /usr/local/bin/gateway-entrypoint.sh
+USER 65532:65532
+EXPOSE 80
+ENTRYPOINT ["/usr/local/bin/gateway-entrypoint.sh"]

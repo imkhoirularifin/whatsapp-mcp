@@ -74,7 +74,7 @@ func loadWebhookConfig() webhookConfig {
 
 // String describes the settings for the start-up log, never including the token
 func (c webhookConfig) String() string {
-	allowed := "any"
+	allowed := "none (deny-all)"
 	if len(c.allowedHosts) > 0 {
 		allowed = strings.Join(c.allowedHosts, ",")
 	}

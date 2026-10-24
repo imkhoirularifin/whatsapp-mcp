@@ -33,9 +33,12 @@ func parseAllowedHosts(raw string) []string {
 	return hosts
 }
 
+// hostAllowed reports whether host is on WEBHOOK_ALLOWED_HOSTS. An empty allowlist
+// denies every host (including loopback and private IPs), so Docker-network SSRF
+// is impossible until an operator explicitly lists targets.
 func (p urlPolicy) hostAllowed(host string) bool {
 	if len(p.allowedHosts) == 0 {
-		return true
+		return false
 	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	for _, entry := range p.allowedHosts {
@@ -117,6 +120,9 @@ func validateWebhookURL(raw string, p urlPolicy) error {
 	if u.User != nil {
 		return errors.New("webhook_url must not contain a user name or password")
 	}
+	if len(p.allowedHosts) == 0 {
+		return fmt.Errorf("webhook targets are disabled until WEBHOOK_ALLOWED_HOSTS is set")
+	}
 	if !p.hostAllowed(host) {
 		return fmt.Errorf("webhook_url host %q is not in WEBHOOK_ALLOWED_HOSTS", host)
 	}
@@ -125,11 +131,6 @@ func validateWebhookURL(raw string, p urlPolicy) error {
 	}
 	if u.Scheme == "http" && !isLocalHost(host) {
 		return errors.New("webhook_url must use https for public hosts (plain http is only allowed for localhost and private networks)")
-	}
-	// Without an allowlist only local targets are accepted, so a prompt-injected listener cannot
-	// post messages to the internet
-	if len(p.allowedHosts) == 0 && !isLocalHost(host) {
-		return fmt.Errorf("webhook_url host %q is not local; list it in WEBHOOK_ALLOWED_HOSTS to allow it", host)
 	}
 	if p.pointsAtSelf(host, defaultPort(u)) {
 		return errors.New("webhook_url must not point at the bridge's own API")
@@ -181,7 +182,12 @@ func dialControl(p urlPolicy) func(network, address string, c syscall.RawConn) e
 		}
 		var port int
 		fmt.Sscan(portStr, &port)
-		if forbiddenIP(net.ParseIP(host), port, p.self, len(p.allowedHosts) > 0) {
+		// Unset allowlist: refuse every dial (including loopback/private Docker networks).
+		if len(p.allowedHosts) == 0 {
+			return fmt.Errorf("connection to %s refused by the webhook URL policy (WEBHOOK_ALLOWED_HOSTS is unset)", host)
+		}
+		// Allowlist set: still refuse link-local/self; host matching already happened at save time.
+		if forbiddenIP(net.ParseIP(host), port, p.self, true) {
 			return fmt.Errorf("connection to %s refused by the webhook URL policy", host)
 		}
 		return nil

@@ -384,7 +384,8 @@ def create_listener(
     of senders), whatever the mode. Messages sent by the account are ignored unless
     include_from_me is true. History sync, edits and old backlog never fire a listener.
 
-    webhook_url must be https, or http only for localhost and private networks. An optional
+    webhook_url must be https, or http only for localhost and private networks, and its host
+    must be listed in WEBHOOK_ALLOWED_HOSTS (unset denies every target). An optional
     secret (16+ characters) signs each request with X-Webhook-Signature; it is never shown
     again after creation. Validation problems come back as `errors` with success false.
     """
