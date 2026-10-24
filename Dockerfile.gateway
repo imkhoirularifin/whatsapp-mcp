@@ -5,6 +5,9 @@ ENV XDG_CONFIG_HOME=/tmp/caddy-config \
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
 RUN chmod 755 /usr/local/bin/gateway-entrypoint.sh
+# Drop cap_net_bind_service from the caddy binary so exec works under
+# compose cap_drop: ALL + no-new-privileges (otherwise: Operation not permitted).
+RUN apk add --no-cache libcap && setcap -r /usr/bin/caddy && apk del libcap
 USER 65532:65532
 EXPOSE 80
 ENTRYPOINT ["/usr/local/bin/gateway-entrypoint.sh"]
