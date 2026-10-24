@@ -25,7 +25,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 256
     healthcheck:
       test: ["CMD", "python", "-c", "import socket;socket.create_connection(('127.0.0.1',8096),3)"]
       interval: 30s
@@ -36,6 +35,7 @@ services:
       resources:
         limits:
           memory: 768M
+          pids: 256
           cpus: "1.0"
 
   gateway:
@@ -57,7 +57,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 64
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/healthz"]
       interval: 30s
@@ -68,6 +67,7 @@ services:
       resources:
         limits:
           memory: 64M
+          pids: 64
           cpus: "0.5"
 
 volumes:
