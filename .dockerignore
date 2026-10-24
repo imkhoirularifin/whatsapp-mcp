@@ -1,0 +1,14 @@
+.git
+**/store
+**/*.db
+**/*.db-*
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/node_modules
+example-use.png
+openspec
+*.md
+!README.md
+.env
+.env.*

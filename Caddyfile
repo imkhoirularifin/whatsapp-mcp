@@ -1,0 +1,41 @@
+{
+	auto_https off # TLS is terminated by Coolify's Traefik
+	admin off
+}
+
+:80 {
+	# Liveness probe: only answers requests that originate INSIDE this container
+	# (the compose/Docker healthcheck). Anything coming through Traefik has a different
+	# source IP and falls through to the bearer check below (-> 401).
+	@health {
+		path /healthz
+		remote_ip 127.0.0.1 ::1
+	}
+	handle @health {
+		respond "ok" 200
+	}
+
+	handle {
+		# Fail closed: exact bearer match only. gateway-entrypoint.sh refuses to start
+		# with an empty/short token, so "Bearer " can never be the expected value.
+		@unauth not header Authorization "Bearer {$MCP_AUTH_TOKEN}"
+		header @unauth WWW-Authenticate "Bearer"
+		respond @unauth "unauthorized" 401
+
+		request_body {
+			max_size 1MB
+		}
+
+		reverse_proxy whatsapp:8096 {
+			header_up -Authorization # the upstream never needs (or logs) the token
+			flush_interval -1 # required for SSE / streaming
+			header_down X-Accel-Buffering no
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 120s # request_chat_history can wait ~20-60s
+				read_timeout 1h # idle SSE; mcp-proxy sends keep-alive pings
+				compression off
+			}
+		}
+	}
+}
