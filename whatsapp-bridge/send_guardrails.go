@@ -32,6 +32,16 @@ func parseFlag(raw string) bool {
 	return v == "true" || v == "1"
 }
 
+// parseReadOnly defaults to true when unset or empty. Explicit false/0/no/off turns
+// sending back on; any other value (including true/1) stays read-only.
+func parseReadOnly(raw string) bool {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if v == "false" || v == "0" || v == "no" || v == "off" {
+		return false
+	}
+	return true
+}
+
 // parseSendRate reads "<per minute>/<per hour>"; empty means no limit
 func parseSendRate(raw string) (perMinute, perHour int, err error) {
 	raw = strings.TrimSpace(raw)
@@ -97,7 +107,7 @@ func parseSendAllowed(raw string) (map[string]bool, error) {
 
 // loadSendGuardConfig reads the settings from the environment
 func loadSendGuardConfig() (sendGuardConfig, error) {
-	cfg := sendGuardConfig{readOnly: parseFlag(os.Getenv("WHATSAPP_READ_ONLY"))}
+	cfg := sendGuardConfig{readOnly: parseReadOnly(os.Getenv("WHATSAPP_READ_ONLY"))}
 	var err error
 	if cfg.perMinute, cfg.perHour, err = parseSendRate(os.Getenv("WHATSAPP_SEND_RATE")); err != nil {
 		return cfg, err

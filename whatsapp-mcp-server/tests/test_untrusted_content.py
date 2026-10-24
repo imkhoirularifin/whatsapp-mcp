@@ -84,17 +84,18 @@ def test_server_instructions_declare_content_untrusted(monkeypatch):
     assert "explicitly" in instructions
 
 
-def test_all_tools_by_default(monkeypatch):
+def test_read_only_by_default(monkeypatch):
     names = _tool_names(_load_main(monkeypatch, None))
-    assert WRITING_TOOLS <= names
+    assert not (WRITING_TOOLS & names)
 
 
-@pytest.mark.parametrize("value", ["true", "1", "TRUE"])
+@pytest.mark.parametrize("value", ["true", "1", "TRUE", "yes"])
 def test_read_only_hides_writing_tools(monkeypatch, value):
     names = _tool_names(_load_main(monkeypatch, value))
     assert not (WRITING_TOOLS & names)
     assert {"list_messages", "download_media", "request_chat_history", "list_listeners", "delete_listener"} <= names
 
 
-def test_unrecognised_value_keeps_tools(monkeypatch):
-    assert WRITING_TOOLS <= _tool_names(_load_main(monkeypatch, "yes"))
+@pytest.mark.parametrize("value", ["false", "0", "no", "off", "FALSE"])
+def test_explicit_false_exposes_writing_tools(monkeypatch, value):
+    assert WRITING_TOOLS <= _tool_names(_load_main(monkeypatch, value))

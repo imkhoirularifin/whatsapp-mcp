@@ -7,11 +7,19 @@ Limits, enforced by the bridge where a prompt-injected model cannot argue with t
 ## Requirements
 
 ### Requirement: Read-only mode
-When the bridge starts with `WHATSAPP_READ_ONLY` set to `true` or `1`, it SHALL refuse `/api/send` and the listener create, update and test-delivery endpoints with `403` and a message naming the setting, without contacting WhatsApp or changing any listener. Reading, media download, history backfill, listing and deleting listeners SHALL keep working, and existing enabled listeners SHALL keep firing. The bridge SHALL state at start-up whether read-only mode is on.
+The bridge SHALL treat read-only mode as on by default (when `WHATSAPP_READ_ONLY` is unset or empty). Explicit `false`, `0`, `no` or `off` turns it off; any other value (including `true` or `1`) keeps it on. While read-only is on, the bridge SHALL refuse `/api/send` and the listener create, update and test-delivery endpoints with `403` and a message naming the setting, without contacting WhatsApp or changing any listener. Reading, media download, history backfill, listing and deleting listeners SHALL keep working, and existing enabled listeners SHALL keep firing. The bridge SHALL state at start-up whether read-only mode is on.
+
+#### Scenario: Default is read-only
+- **WHEN** the bridge starts without `WHATSAPP_READ_ONLY` set and a client calls `/api/send`
+- **THEN** the bridge answers `403`, sends nothing and stores nothing
 
 #### Scenario: Send refused
 - **WHEN** the bridge runs with `WHATSAPP_READ_ONLY=true` and a client calls `/api/send`
 - **THEN** the bridge answers `403`, sends nothing and stores nothing
+
+#### Scenario: Explicit opt-in to sending
+- **WHEN** the bridge runs with `WHATSAPP_READ_ONLY=false` and a client calls `/api/send` with a valid message
+- **THEN** the send proceeds (subject to rate limit and allowlist)
 
 #### Scenario: Listener creation refused
 - **WHEN** the bridge runs with `WHATSAPP_READ_ONLY=true` and a client creates a listener

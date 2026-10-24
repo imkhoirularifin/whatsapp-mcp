@@ -1,0 +1,25 @@
+{
+	auto_https off   # TLS is terminated by Coolify's Traefik
+	admin off
+}
+
+:80 {
+	# Unauthenticated liveness probe (Coolify / compose healthcheck only)
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		# Reject anything without the exact bearer token.
+		# MCP_AUTH_TOKEN must be set to a long random value (Coolify SERVICE_PASSWORD_64_*).
+		@unauth not header Authorization "Bearer {$MCP_AUTH_TOKEN}"
+		respond @unauth "unauthorized" 401
+
+		reverse_proxy whatsapp:8096 {
+			flush_interval -1      # required for SSE / streaming
+			transport http {
+				read_timeout 1h
+			}
+		}
+	}
+}

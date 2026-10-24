@@ -6,9 +6,10 @@ whatsapp-mcp is distributed under the [MIT License](./LICENSE). Each person belo
 
 - **Luke Harries** ([@lharries](https://github.com/lharries)): created the project ([lharries/whatsapp-mcp](https://github.com/lharries/whatsapp-mcp))
 
-## Fork maintainer
+## Fork maintainers
 
-- **Rodrigo Ernesto Álvarez Aguilera** ([@incognia](https://github.com/incognia)): maintains this fork ([incognia/whatsapp-mcp](https://github.com/incognia/whatsapp-mcp))
+- **Rodrigo Ernesto Álvarez Aguilera** ([@incognia](https://github.com/incognia)): security and feature work in [incognia/whatsapp-mcp](https://github.com/incognia/whatsapp-mcp) merged into this repository
+- **Khoirul Arifin** ([@imkhoirularifin](https://github.com/imkhoirularifin)): Coolify / Docker packaging and deploy hardening for this fork ([imkhoirularifin/whatsapp-mcp](https://github.com/imkhoirularifin/whatsapp-mcp))
 
 ## Code contributors
 

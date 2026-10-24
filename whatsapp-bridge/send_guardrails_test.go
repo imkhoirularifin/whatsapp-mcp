@@ -23,6 +23,39 @@ func TestParseFlag(t *testing.T) {
 	}
 }
 
+func TestParseReadOnly(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"": true, "true": true, "1": true, "TRUE": true, "yes": true,
+		"false": false, "0": false, "no": false, "off": false, "FALSE": false,
+	} {
+		if got := parseReadOnly(raw); got != want {
+			t.Errorf("parseReadOnly(%q) = %v, want %v", raw, got, want)
+		}
+	}
+}
+
+func TestLoadSendGuardConfigDefaultsReadOnly(t *testing.T) {
+	t.Setenv("WHATSAPP_READ_ONLY", "")
+	t.Setenv("WHATSAPP_SEND_RATE", "")
+	t.Setenv("WHATSAPP_SEND_ALLOWED", "")
+	cfg, err := loadSendGuardConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.readOnly {
+		t.Fatal("WHATSAPP_READ_ONLY must default to true when unset/empty")
+	}
+
+	t.Setenv("WHATSAPP_READ_ONLY", "false")
+	cfg, err = loadSendGuardConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.readOnly {
+		t.Fatal("WHATSAPP_READ_ONLY=false must disable read-only mode")
+	}
+}
+
 func TestParseSendRate(t *testing.T) {
 	cases := []struct {
 		raw          string

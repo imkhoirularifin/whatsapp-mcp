@@ -3,6 +3,14 @@
 **Note:** All dates are in Mexico City CST (UTC-6).
 
 <!-- markdownlint-disable MD013 MD024 MD022 MD032 -->
+## [2026-10-24] - Coolify deploy hardening
+
+- security: default `WHATSAPP_READ_ONLY` to **true** in the bridge and MCP server (opt out with `false` / `0` / `no` / `off`)
+- chore: bump `go.mau.fi/whatsmeow` to `v0.0.0-20261017175727-b2b1e71d45e2` (verified combination for the upstream 405 / media-403 tracking issue)
+- test: add path-traversal / media-root coverage for `checkMediaPath`, and tests for the new read-only default
+- feat: add Coolify-oriented Docker packaging (`Dockerfile`, `entrypoint.sh`, `Dockerfile.gateway`, `Caddyfile`, `docker-compose.yaml`) built from this repo's source (no remote `git clone` at build time), non-root `app` (uid 10001), store volume at `/app/whatsapp-bridge/store`, bridge on `127.0.0.1:8080`, mcp-proxy on `8096`, Bearer auth at the Caddy gateway with unauthenticated `/healthz`
+- docs: document Coolify deploy, QR via `docker logs`, env vars, remote MCP client config, and risks (prompt injection, ban risk, backing up `whatsapp.db`)
+
 ## [2026-10-13] - Exact sender names
 
 - docs: archive the completed `fix-sender-name-lookup` OpenSpec change and sync its delta into the new main spec `openspec/specs/sender-names/spec.md`, leaving no active changes

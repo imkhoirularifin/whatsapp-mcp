@@ -20,7 +20,8 @@ This is a maintained fork of [lharries/whatsapp-mcp](https://github.com/lharries
 - On-demand loading of older history for one chat
 - Message listeners that post matching live messages to a signed webhook
 - Prompt injection guardrails enforced by the bridge: session and hidden files are never sent, webhooks stay local unless allowed, third-party text is marked as untrusted, and read-only mode, a send rate limit and a recipient allowlist are available (see [Security](#security))
-- Safer defaults: API bound to loopback, media path restrictions, no message content in console logs, and the same `store/` whether the bridge is built or started with `go run`
+- Safer defaults: API bound to loopback, **read-only mode on by default**, media path restrictions, no message content in console logs, and the same `store/` whether the bridge is built or started with `go run`
+- Docker / Coolify deployment: one container (bridge + MCP + mcp-proxy), Caddy Bearer gateway, persistent `store/` volume
 
 Every change is listed in [CHANGELOG.md](./CHANGELOG.md), and the behaviour of each capability is specified under [`openspec/specs/`](./openspec/specs/).
 
@@ -37,7 +38,7 @@ Every change is listed in [CHANGELOG.md](./CHANGELOG.md), and the behaviour of e
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/incognia/whatsapp-mcp.git
+git clone https://github.com/imkhoirularifin/whatsapp-mcp.git
 cd whatsapp-mcp
 ```
 
@@ -67,7 +68,7 @@ The MCP server is started by your client with uv; you do not run it yourself. Re
 claude mcp add whatsapp --scope user -- uv --directory /path/to/whatsapp-mcp/whatsapp-mcp-server run main.py
 ```
 
-Check it with `claude mcp get whatsapp`, then start a new Claude Code session.
+Check it with `claude mcp get whatsapp`, then start a new Claude Code session. Read-only mode is on by default; add `-e WHATSAPP_READ_ONLY=false` only if you need send tools.
 
 **Claude Desktop or Cursor**
 
@@ -78,11 +79,73 @@ Add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (C
   "mcpServers": {
     "whatsapp": {
       "command": "/path/to/uv",
-      "args": ["--directory", "/path/to/whatsapp-mcp/whatsapp-mcp-server", "run", "main.py"]
+      "args": ["--directory", "/path/to/whatsapp-mcp/whatsapp-mcp-server", "run", "main.py"],
+      "env": { "WHATSAPP_READ_ONLY": "false" }
     }
   }
 }
 ```
+
+Omit `"env"` (or set `WHATSAPP_READ_ONLY` to `true`) for a read-only session.
+
+## Deploy on Coolify (Docker)
+
+This repo ships a single-app container (Go bridge + Python MCP + `mcp-proxy`) and a small Caddy gateway that enforces a Bearer token. Coolify should deploy `docker-compose.yaml` as a Docker Compose service.
+
+**Fixed facts for DevOps** (do not change without updating Coolify):
+
+| Fact | Value |
+|---|---|
+| App user | `app` (uid `10001`) |
+| Store volume path | `/app/whatsapp-bridge/store` |
+| Bridge REST API | `127.0.0.1:8080` only — never published |
+| MCP proxy | `0.0.0.0:8096` (`/mcp` streamable HTTP, `/sse` SSE) |
+| Gateway | Caddy on `:80`, public URL via Coolify |
+| Auth | `Authorization: Bearer <MCP_AUTH_TOKEN>` on every path except `/healthz` |
+
+### Steps
+
+1. Create a Coolify **Docker Compose** resource pointing at this repository (branch with the Docker files).
+2. Ensure Coolify injects `SERVICE_PASSWORD_64_MCPTOKEN` (or set `MCP_AUTH_TOKEN` yourself to a long random secret). Never commit the token.
+3. Deploy. Mount / keep the named volume `wa-store` so pairing survives restarts.
+4. **Scan the QR**: `docker logs -f <whatsapp-container>` (or Coolify’s log view) and scan the QR with WhatsApp → **Linked devices**. Pairing writes `whatsapp.db` into the store volume.
+5. Point an MCP client at the gateway URL.
+
+### Environment variables
+
+| Variable | Default | Notes |
+|---|---|---|
+| `WHATSAPP_READ_ONLY` | `true` | Safe default. Set `false` only if you need send / listener tools |
+| `WHATSAPP_SEND_RATE` | `5/30` in compose | Max sends `<per minute>/<per hour>`; ignored while read-only |
+| `WHATSAPP_SEND_ALLOWED` | (unset) | Optional comma-separated recipients |
+| `BIND_ADDR` | `127.0.0.1` | Keep loopback. The REST API has **no** auth |
+| `MCP_AUTH_TOKEN` | from Coolify | Required on the gateway. Clients must send `Authorization: Bearer …` |
+| `WHATSAPP_MEDIA_ROOTS` | (unset) | Optional send allow-list of directories |
+
+### Connect Cursor / Claude Desktop (remote)
+
+Use your Coolify HTTPS URL (example `https://wa-mcp.example.com`). Streamable HTTP is usually preferred:
+
+```json
+{
+  "mcpServers": {
+    "whatsapp": {
+      "url": "https://wa-mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MCP_AUTH_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Some clients still use SSE: `https://wa-mcp.example.com/sse` with the same Bearer header. `/healthz` is unauthenticated for probes only.
+
+### Risks (read before enabling send)
+
+- **Prompt injection**: anyone who can message you controls text the model reads. Markers and read-only mode reduce risk; they do not eliminate it. Prefer read-only unless you must send.
+- **Account ban**: whatsmeow is unofficial. Unusual or bulk traffic can get the WhatsApp account restricted.
+- **Back up `whatsapp.db`**: it is the paired session. Losing the volume means re-scanning a QR. Copy `/app/whatsapp-bridge/store` (especially `whatsapp.db`) somewhere safe.
 
 ## Usage
 
@@ -108,7 +171,7 @@ Read tools return each message's text between `<<message id=…>>` and `<</messa
 - **send_file**: send an image, video, document or raw audio
 - **send_audio_message**: send audio as a playable voice message (`.ogg` Opus, or any format with FFmpeg installed)
 
-Sent messages are stored immediately as your own, so they show up in `list_messages` and `list_chats` straight away. With `WHATSAPP_READ_ONLY` set for the MCP server, these tools and the listener-changing ones are not offered at all; the bridge's guardrails refuse a send with `400` (protected file), `403` (read-only mode or recipient not allowed) or `429` (rate limit), and the tool returns that reason.
+Sent messages are stored immediately as your own, so they show up in `list_messages` and `list_chats` straight away. With the default `WHATSAPP_READ_ONLY=true`, these tools and the listener-changing ones are not offered at all; the bridge's guardrails refuse a send with `400` (protected file), `403` (read-only mode or recipient not allowed) or `429` (rate limit), and the tool returns that reason.
 
 **Listeners**
 
@@ -185,7 +248,7 @@ All settings are environment variables of the bridge (`WEBHOOK_ADMIN_TOKEN` and 
 |---|---|---|
 | `BIND_ADDR` | `127.0.0.1` | Address of the REST API (port 8080). The API has no authentication and can read and send messages, so only change it on a network you trust |
 | `WHATSAPP_MEDIA_ROOTS` | (any path without `..` outside `store/` and hidden folders) | Folders, separated by `:` (`;` on Windows), that media may be sent from |
-| `WHATSAPP_READ_ONLY` | off | `true` or `1` refuses every send and listener change in the bridge; set it for the MCP server too to hide those tools |
+| `WHATSAPP_READ_ONLY` | `true` | Defaults to on. Refuses every send and listener change in the bridge and hides those tools in the MCP server. Set `false` / `0` / `no` / `off` only when you explicitly need sending |
 | `WHATSAPP_SEND_RATE` | (no limit) | Maximum sends as `<per minute>/<per hour>`, for example `10/60`; `0` leaves a window unlimited |
 | `WHATSAPP_SEND_ALLOWED` | (anyone) | Comma-separated phone numbers or JIDs the bridge may send to |
 | `WHATSAPP_LOG_CONTENT` | off | `true` or `1` prints message text and filenames in the console, for local debugging |
@@ -220,12 +283,12 @@ These hold whatever the model asks, because every send and listener goes through
 
 | Setting | Effect |
 |---|---|
-| `WHATSAPP_READ_ONLY=true` (bridge and MCP server) | No sending and no listener changes at all; the send tools disappear. Best for sessions that only read and summarise |
+| `WHATSAPP_READ_ONLY` (default `true`, bridge and MCP server) | No sending and no listener changes at all; the send tools disappear. Best for sessions that only read and summarise. Set `false` only when you need to send |
 | `WHATSAPP_SEND_RATE=10/60` | Caps how much an injected loop can send, and keeps the account from looking like spam |
 | `WHATSAPP_SEND_ALLOWED=…` | Only these numbers or groups can receive messages |
 | `WHATSAPP_MEDIA_ROOTS=…` | Files can only be sent from these folders |
 
-To set `WHATSAPP_READ_ONLY` for the MCP server in Claude Code, add `-e WHATSAPP_READ_ONLY=true` to the `claude mcp add` command (Claude Desktop and Cursor: an `"env"` entry in the server's JSON).
+Read-only is the default for both processes. To allow sending in Claude Code, add `-e WHATSAPP_READ_ONLY=false` to the `claude mcp add` command (Claude Desktop and Cursor: an `"env"` entry in the server's JSON).
 
 ### Recommended setup
 
@@ -298,7 +361,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
 - **A chat is missing older messages**: load them with `request_chat_history` instead of linking again.
 - **Out of sync beyond repair**: stop the bridge, delete `whatsapp-bridge/store/messages.db` and `whatsapp-bridge/store/whatsapp.db`, and start it again to link from scratch. This loses listeners and any history your phone no longer sends.
 - **uv permission or path errors**: use the full path from `which uv` in your MCP client's configuration.
-- **"sending is disabled (WHATSAPP_READ_ONLY)"** or **"listener changes are disabled"**: the bridge runs in read-only mode; restart it without `WHATSAPP_READ_ONLY` to send.
+- **"sending is disabled (WHATSAPP_READ_ONLY)"** or **"listener changes are disabled"**: read-only is the default; set `WHATSAPP_READ_ONLY=false` on the bridge and MCP server (or the Coolify service) to allow sending.
 - **"send rate limit reached (WHATSAPP_SEND_RATE)"**: wait for the `Retry-After` seconds, or raise or remove the limit.
 - **"recipient is not in WHATSAPP_SEND_ALLOWED"**: add the number or group JID to the allowlist, or unset it.
 - **"Refusing media_path: … hidden path component"** or **"… inside the bridge's store/"**: move the file to an ordinary folder, or add the hidden folder to `WHATSAPP_MEDIA_ROOTS` if you really mean to send from it. The bridge's own `store/` can never be sent.
@@ -312,6 +375,6 @@ Created by [Luke Harries](https://github.com/lharries) ([original repository](ht
 
 ---
 
-*This fork is maintained by Rodrigo Álvarez (@incognia) and distributed under the MIT License. For details, see the LICENSE file.*
+*This repository is a fork of [lharries/whatsapp-mcp](https://github.com/lharries/whatsapp-mcp), incorporating work from [incognia/whatsapp-mcp](https://github.com/incognia/whatsapp-mcp), and is distributed under the MIT License. For details, see the LICENSE file.*
 
 *Copyright © 2025 Luke Harries. Copyright © 2026 Rodrigo Ernesto Álvarez Aguilera and the contributors listed in AUTHORS.md.*

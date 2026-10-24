@@ -1,0 +1,46 @@
+services:
+  whatsapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Safety switches — read-only is also the image/binary default
+      - WHATSAPP_READ_ONLY=${WHATSAPP_READ_ONLY:-true}
+      - WHATSAPP_SEND_RATE=${WHATSAPP_SEND_RATE:-5/30}
+      - BIND_ADDR=127.0.0.1
+      # - WHATSAPP_SEND_ALLOWED=628123456789           # optional recipient allow-list
+      # - WHATSAPP_MEDIA_ROOTS=/app/whatsapp-bridge/store/media
+    volumes:
+      - wa-store:/app/whatsapp-bridge/store            # whatsapp.db (session!) + messages.db + media
+    expose:
+      - "8096"                                         # internal only; do NOT publish 8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket;socket.create_connection(('127.0.0.1',8096),3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    depends_on:
+      - whatsapp
+    environment:
+      - SERVICE_FQDN_GATEWAY_80                        # Coolify assigns the public domain → port 80
+      - MCP_AUTH_TOKEN=${SERVICE_PASSWORD_64_MCPTOKEN} # Coolify generates a 64-char token
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  wa-store:

@@ -25,8 +25,16 @@ Tools that return message text (`list_messages`, `get_message_context`, `get_las
 - **THEN** the returned text does not contain an end marker before the real end of that message
 
 ### Requirement: Read-only mode hides changing tools
-When the MCP server starts with `WHATSAPP_READ_ONLY` set to `true` or `1`, it SHALL NOT register `send_message`, `send_file`, `send_audio_message`, `create_listener`, `set_listener_enabled` and `test_listener`; the read tools, `download_media`, `request_chat_history`, `list_listeners` and `delete_listener` SHALL remain.
+The MCP server SHALL default to read-only mode (when `WHATSAPP_READ_ONLY` is unset or empty). Explicit `false`, `0`, `no` or `off` turns it off; any other value keeps it on. While read-only is on, it SHALL NOT register `send_message`, `send_file`, `send_audio_message`, `create_listener`, `set_listener_enabled` and `test_listener`; the read tools, `download_media`, `request_chat_history`, `list_listeners` and `delete_listener` SHALL remain.
+
+#### Scenario: Default hides writing tools
+- **WHEN** a client lists tools from a server started without `WHATSAPP_READ_ONLY`
+- **THEN** no send tool, `create_listener`, `set_listener_enabled` or `test_listener` is listed
 
 #### Scenario: Tools listed in read-only mode
 - **WHEN** a client lists tools from a server started with `WHATSAPP_READ_ONLY=true`
 - **THEN** no send tool, `create_listener`, `set_listener_enabled` or `test_listener` is listed
+
+#### Scenario: Explicit opt-in exposes writing tools
+- **WHEN** a client lists tools from a server started with `WHATSAPP_READ_ONLY=false`
+- **THEN** the send and listener-changing tools are listed
